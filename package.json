@@ -3,7 +3,11 @@
 	"private": true,
 	"type": "module",
 	"workspaces": [
-		"packages/*",
+		"packages/tui",
+		"packages/ai",
+		"packages/agent",
+		"packages/coding-agent",
+		"packages/web-ui",
 		"packages/web-ui/example",
 		"packages/coding-agent/examples/extensions/with-deps",
 		"packages/coding-agent/examples/extensions/custom-provider-anthropic",
