@@ -86,6 +86,16 @@ const DEEPSEEK_V4_THINKING_LEVEL_MAP = {
 	xhigh: "max",
 } as const;
 
+const OPENAI_RESPONSES_NONE_REASONING_MODELS = new Set([
+	"gpt-5.1",
+	"gpt-5.2",
+	"gpt-5.3-codex",
+	"gpt-5.4",
+	"gpt-5.4-mini",
+	"gpt-5.4-nano",
+	"gpt-5.5",
+]);
+
 function mergeThinkingLevelMap(model: Model<any>, map: NonNullable<Model<any>["thinkingLevelMap"]>): void {
 	model.thinkingLevelMap = { ...model.thinkingLevelMap, ...map };
 }
@@ -121,6 +131,13 @@ function applyThinkingLevelMetadata(model: Model<any>): void {
 		model.id.startsWith("gpt-5")
 	) {
 		mergeThinkingLevelMap(model, { off: null });
+	}
+	if (
+		model.api === "openai-responses" &&
+		model.provider === "openai" &&
+		OPENAI_RESPONSES_NONE_REASONING_MODELS.has(model.id)
+	) {
+		mergeThinkingLevelMap(model, { off: "none" });
 	}
 	if (supportsOpenAiXhigh(model.id)) {
 		mergeThinkingLevelMap(model, { xhigh: "xhigh" });
@@ -857,15 +874,17 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 			const kimiModels = data["kimi-for-coding"].models as Record<string, ModelsDevModel>;
 			const hasCanonicalModel = Object.prototype.hasOwnProperty.call(kimiModels, "kimi-for-coding");
 
+			const kimiAliases = new Set(["k2p5", "k2p6"]);
+
 			for (const [modelId, model] of Object.entries(kimiModels)) {
 				const m = model as ModelsDevModel;
 				if (m.tool_call !== true) continue;
-				// models.dev still exposes deprecated "k2p5" in some snapshots.
-				// Normalize to the canonical model id and drop duplicates when canonical exists.
-				if (modelId === "k2p5" && hasCanonicalModel) continue;
+				// models.dev may expose versioned aliases (e.g. k2p5/k2p6).
+				// Normalize aliases to the canonical model id and drop duplicates when canonical exists.
+				if (kimiAliases.has(modelId) && hasCanonicalModel) continue;
 
-				const normalizedId = modelId === "k2p5" ? "kimi-for-coding" : modelId;
-				const normalizedName = modelId === "k2p5" ? "Kimi For Coding" : m.name || normalizedId;
+				const normalizedId = kimiAliases.has(modelId) ? "kimi-for-coding" : modelId;
+				const normalizedName = kimiAliases.has(modelId) ? "Kimi For Coding" : m.name || normalizedId;
 
 				models.push({
 					id: normalizedId,
