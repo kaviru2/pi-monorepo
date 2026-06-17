@@ -799,9 +799,9 @@ Notes:
 A **provider** offers models through a specific API. For example:
 - **Anthropic** models use the `anthropic-messages` API
 - **Google** models use the `google-generative-ai` API
-- **OpenAI** models use the `openai-responses` API
+- **OpenAI and Groq** models use the `openai-responses` API
 - **Mistral** models use the `mistral-conversations` API
-- **xAI, Cerebras, Groq, Together AI, etc.** models use the `openai-completions` API (OpenAI-compatible)
+- **xAI, Cerebras, Together AI, etc.** models use the `openai-completions` API (OpenAI-compatible)
 
 ### Querying Providers and Models
 
