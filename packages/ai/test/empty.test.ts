@@ -248,7 +248,7 @@ describe("AI Providers Empty Message Tests", () => {
 	});
 
 	describe.skipIf(!process.env.XAI_API_KEY)("xAI Provider Empty Messages", () => {
-		const llm = getModel("xai", "grok-3");
+		const llm = getModel("xai", "grok-4.3");
 
 		it("should handle empty content array", { retry: 3, timeout: 30000 }, async () => {
 			await testEmptyMessage(llm);
@@ -630,37 +630,37 @@ describe("AI Providers Empty Message Tests", () => {
 
 	describe("GitHub Copilot Provider Empty Messages", () => {
 		it.skipIf(!githubCopilotToken)(
-			"gpt-4o - should handle empty content array",
+			"gpt-5-mini - should handle empty content array",
 			{ retry: 3, timeout: 30000 },
 			async () => {
-				const llm = getModel("github-copilot", "gpt-4o");
+				const llm = getModel("github-copilot", "gpt-5-mini");
 				await testEmptyMessage(llm, { apiKey: githubCopilotToken });
 			},
 		);
 
 		it.skipIf(!githubCopilotToken)(
-			"gpt-4o - should handle empty string content",
+			"gpt-5-mini - should handle empty string content",
 			{ retry: 3, timeout: 30000 },
 			async () => {
-				const llm = getModel("github-copilot", "gpt-4o");
+				const llm = getModel("github-copilot", "gpt-5-mini");
 				await testEmptyStringMessage(llm, { apiKey: githubCopilotToken });
 			},
 		);
 
 		it.skipIf(!githubCopilotToken)(
-			"gpt-4o - should handle whitespace-only content",
+			"gpt-5-mini - should handle whitespace-only content",
 			{ retry: 3, timeout: 30000 },
 			async () => {
-				const llm = getModel("github-copilot", "gpt-4o");
+				const llm = getModel("github-copilot", "gpt-5-mini");
 				await testWhitespaceOnlyMessage(llm, { apiKey: githubCopilotToken });
 			},
 		);
 
 		it.skipIf(!githubCopilotToken)(
-			"gpt-4o - should handle empty assistant message in conversation",
+			"gpt-5-mini - should handle empty assistant message in conversation",
 			{ retry: 3, timeout: 30000 },
 			async () => {
-				const llm = getModel("github-copilot", "gpt-4o");
+				const llm = getModel("github-copilot", "gpt-5-mini");
 				await testEmptyAssistantMessage(llm, { apiKey: githubCopilotToken });
 			},
 		);

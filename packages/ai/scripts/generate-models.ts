@@ -15,6 +15,7 @@ import {
 	KnownProvider,
 	Model,
 	type OpenAICompletionsCompat,
+	type OpenAIResponsesCompat,
 } from "../src/types.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -495,6 +496,12 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 		}
 
 		// Process Groq models
+		const groqCompat: OpenAIResponsesCompat = {
+			sendSessionIdHeader: false,
+			supportsLongCacheRetention: false,
+			supportsIncludeEncryptedReasoning: false,
+		};
+
 		if (data.groq?.models) {
 			for (const [modelId, model] of Object.entries(data.groq.models)) {
 				const m = model as ModelsDevModel;
@@ -503,7 +510,7 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 				models.push({
 					id: modelId,
 					name: m.name || modelId,
-					api: "openai-completions",
+					api: "openai-responses",
 					provider: "groq",
 					baseUrl: "https://api.groq.com/openai/v1",
 					reasoning: m.reasoning === true,
@@ -516,6 +523,7 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 					},
 					contextWindow: m.limit?.context || 4096,
 					maxTokens: m.limit?.output || 4096,
+					compat: groqCompat,
 				});
 			}
 		}

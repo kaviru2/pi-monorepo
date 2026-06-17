@@ -567,7 +567,7 @@ describe("Generate E2E Tests", () => {
 		});
 	});
 
-	describe.skipIf(!process.env.GROQ_API_KEY)("Groq Provider (gpt-oss-20b via OpenAI Completions)", () => {
+	describe.skipIf(!process.env.GROQ_API_KEY)("Groq Provider (gpt-oss-20b via OpenAI Responses)", () => {
 		const llm = getModel("groq", "openai/gpt-oss-20b");
 
 		it("should complete basic text generation", { retry: 3 }, async () => {

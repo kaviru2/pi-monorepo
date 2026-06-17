@@ -405,6 +405,8 @@ export interface OpenAIResponsesCompat {
 	sendSessionIdHeader?: boolean;
 	/** Whether the provider supports `prompt_cache_retention: "24h"`. Default: true. */
 	supportsLongCacheRetention?: boolean;
+	/** Whether the provider supports `include: ["reasoning.encrypted_content"]`. Default: true. */
+	supportsIncludeEncryptedReasoning?: boolean;
 }
 
 /** Compatibility settings for Anthropic Messages-compatible APIs. */

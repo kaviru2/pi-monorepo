@@ -156,7 +156,8 @@ describe("openai-completions tool_choice", () => {
 	});
 
 	it("maps groq qwen3 reasoning levels to default reasoning_effort", async () => {
-		const model = getModel("groq", "qwen/qwen3-32b")!;
+		const baseModel = getModel("groq", "qwen/qwen3-32b")!;
+		const model = { ...baseModel, api: "openai-completions" as const };
 		let payload: unknown;
 
 		await streamSimple(
@@ -184,7 +185,8 @@ describe("openai-completions tool_choice", () => {
 	});
 
 	it("keeps normal reasoning_effort for groq models without compat mapping", async () => {
-		const model = getModel("groq", "openai/gpt-oss-20b")!;
+		const baseModel = getModel("groq", "openai/gpt-oss-20b")!;
+		const model = { ...baseModel, api: "openai-completions" as const };
 		let payload: unknown;
 
 		await streamSimple(
