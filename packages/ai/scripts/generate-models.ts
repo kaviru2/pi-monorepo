@@ -507,13 +507,14 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 				const m = model as ModelsDevModel;
 				if (m.tool_call !== true) continue;
 
+				const reasoning = m.reasoning === true;
 				models.push({
 					id: modelId,
 					name: m.name || modelId,
 					api: "openai-responses",
 					provider: "groq",
 					baseUrl: "https://api.groq.com/openai/v1",
-					reasoning: m.reasoning === true,
+					reasoning,
 					input: m.modalities?.input?.includes("image") ? ["text", "image"] : ["text"],
 					cost: {
 						input: m.cost?.input || 0,
@@ -524,6 +525,8 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 					contextWindow: m.limit?.context || 4096,
 					maxTokens: m.limit?.output || 4096,
 					compat: groqCompat,
+					// Groq supports none|default|low|medium|high — map "minimal" to "low"
+					...(reasoning ? { thinkingLevelMap: { minimal: "low", low: "low", medium: "medium", high: "high", off: "none" } } : {}),
 				});
 			}
 		}
