@@ -183,6 +183,18 @@ Abort does not discard pending session writes. Pending writes flush at the next 
 
 Abort barrier semantics still need an audit.
 
+## Execution Time Limits and Self-Imposed Timeouts
+
+When running agent loops under strict client-side or orchestrator timeout limits (for example, a 10-minute maximum polling limit), a self-imposed timeout strategy is used to ensure the agent has enough time to compile findings and exit gracefully rather than being abruptly cut off.
+
+The mechanism uses a tracked `deadline` and a dynamic `safetyMargin`:
+
+- **Deadline Calculation**: Derived from the configured execution limit (e.g. `ACI_TIME_LIMIT` or `timeLimitSecs` option).
+- **Safety Margin**: A dynamically scaled safety margin is calculated as `Math.min(90 * 1000, Math.max(2000, Math.floor(timeLimitSecs * 1000 * 0.15)))` (yielding 90 seconds for standard runs, and scaling down proportionally for shorter or test runs).
+- **Tool Blocking**: Before any tool invocation, `beforeToolCall` hooks check the elapsed time. If the current time crosses the safety margin threshold (`Date.now() >= deadline - safetyMargin`), the tool call is blocked and a prompt error is returned instructing the agent to cease command execution, compile all findings, and output its final structured JSON immediately.
+- **Dynamic Command Interrupts**: To prevent a single long-running command (like an `nmap` scan or password spray) from eating up the safety margin, the execution timeout for individual bash tool calls is dynamically capped at the remaining time before the safety margin begins.
+- **Observability**: A `timeLimitApproached` flag is tracked throughout the agent loop lifecycle (updated during both tool-call preprocessing and post-processing). If set, a visible warning indicator is appended to the agent's findings trace to alert the orchestrator that the run was truncated.
+
 ## Compaction and tree navigation
 
 Compaction and tree navigation are structural session mutations.
