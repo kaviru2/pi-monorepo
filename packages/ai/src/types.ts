@@ -399,7 +399,6 @@ export interface OpenAICompletionsCompat {
 	supportsLongCacheRetention?: boolean;
 }
 
-/** Compatibility settings for OpenAI Responses APIs. */
 export interface OpenAIResponsesCompat {
 	/** Whether to send the OpenAI `session_id` cache-affinity header from `options.sessionId` when caching is enabled. Default: true. */
 	sendSessionIdHeader?: boolean;
@@ -407,6 +406,8 @@ export interface OpenAIResponsesCompat {
 	supportsLongCacheRetention?: boolean;
 	/** Whether the provider supports `include: ["reasoning.encrypted_content"]`. Default: true. */
 	supportsIncludeEncryptedReasoning?: boolean;
+	/** Whether the provider supports `reasoning.summary`. Default: true. */
+	supportsReasoningSummary?: boolean;
 }
 
 /** Compatibility settings for Anthropic Messages-compatible APIs. */
