@@ -500,6 +500,7 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 			sendSessionIdHeader: false,
 			supportsLongCacheRetention: false,
 			supportsIncludeEncryptedReasoning: false,
+			supportsReasoningSummary: false,
 		};
 
 		if (data.groq?.models) {

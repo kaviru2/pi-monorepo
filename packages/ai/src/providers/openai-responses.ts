@@ -42,6 +42,7 @@ function getCompat(model: Model<"openai-responses">): Required<OpenAIResponsesCo
 		sendSessionIdHeader: model.compat?.sendSessionIdHeader ?? true,
 		supportsLongCacheRetention: model.compat?.supportsLongCacheRetention ?? true,
 		supportsIncludeEncryptedReasoning: model.compat?.supportsIncludeEncryptedReasoning ?? true,
+		supportsReasoningSummary: model.compat?.supportsReasoningSummary ?? true,
 	};
 }
 
@@ -253,7 +254,7 @@ function buildParams(model: Model<"openai-responses">, context: Context, options
 				: "medium";
 			params.reasoning = {
 				effort: effort as NonNullable<typeof params.reasoning>["effort"],
-				summary: options?.reasoningSummary || "auto",
+				...(compat.supportsReasoningSummary ? { summary: options?.reasoningSummary || "auto" } : {}),
 			};
 			if (compat.supportsIncludeEncryptedReasoning) {
 				params.include = ["reasoning.encrypted_content"];
