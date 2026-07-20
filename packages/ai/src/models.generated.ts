@@ -5454,8 +5454,7 @@ export const MODELS = {
 			provider: "groq",
 			baseUrl: "https://api.groq.com/openai/v1",
 			compat: {"sendSessionIdHeader":false,"supportsLongCacheRetention":false,"supportsIncludeEncryptedReasoning":false,"supportsReasoningSummary":false},
-			reasoning: true,
-			thinkingLevelMap: {"minimal":null,"low":null,"medium":null,"high":"default","off":"none"},
+			reasoning: false,
 			input: ["text"],
 			cost: {
 				input: 0,
@@ -13957,9 +13956,9 @@ export const MODELS = {
 			reasoning: true,
 			input: ["text"],
 			cost: {
-				input: 0.9674,
-				output: 3.0404,
-				cacheRead: 0.17966000000000001,
+				input: 0.9758,
+				output: 3.0668,
+				cacheRead: 0.18122,
 				cacheWrite: 0,
 			},
 			contextWindow: 1048576,

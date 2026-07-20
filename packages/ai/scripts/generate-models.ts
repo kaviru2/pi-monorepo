@@ -232,9 +232,7 @@ function applyThinkingLevelMetadata(model: Model<any>): void {
 	if (isGoogleThinkingApi(model) && isGemma4Model(model.id)) {
 		mergeThinkingLevelMap(model, { off: null, minimal: "MINIMAL", low: null, medium: null, high: "HIGH" });
 	}
-	if (model.provider === "groq" && model.id === "qwen/qwen3.6-27b") {
-		mergeThinkingLevelMap(model, { minimal: null, low: null, medium: null, high: "default" });
-	}
+
 	if (model.provider === "openai-codex" && supportsOpenAiXhigh(model.id)) {
 		mergeThinkingLevelMap(model, { minimal: "low" });
 	}
@@ -511,7 +509,6 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 			data.groq.models["qwen/qwen3.6-27b"] = {
 				name: "Qwen3.6 27B",
 				tool_call: true,
-				reasoning: true,
 				limit: { context: 131072, output: 32768 },
 			};
 
