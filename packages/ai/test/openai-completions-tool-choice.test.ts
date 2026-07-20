@@ -156,7 +156,7 @@ describe("openai-completions tool_choice", () => {
 	});
 
 	it("maps groq qwen3 reasoning levels to default reasoning_effort", async () => {
-		const baseModel = getModel("groq", "qwen/qwen3-32b")!;
+		const baseModel = getModel("groq", "qwen/qwen3.6-27b")!;
 		const model = { ...baseModel, api: "openai-completions" as const };
 		let payload: unknown;
 

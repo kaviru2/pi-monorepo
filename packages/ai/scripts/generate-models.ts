@@ -232,7 +232,7 @@ function applyThinkingLevelMetadata(model: Model<any>): void {
 	if (isGoogleThinkingApi(model) && isGemma4Model(model.id)) {
 		mergeThinkingLevelMap(model, { off: null, minimal: "MINIMAL", low: null, medium: null, high: "HIGH" });
 	}
-	if (model.provider === "groq" && model.id === "qwen/qwen3-32b") {
+	if (model.provider === "groq" && model.id === "qwen/qwen3.6-27b") {
 		mergeThinkingLevelMap(model, { minimal: null, low: null, medium: null, high: "default" });
 	}
 	if (model.provider === "openai-codex" && supportsOpenAiXhigh(model.id)) {
@@ -504,6 +504,17 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 		};
 
 		if (data.groq?.models) {
+			// Replace deprecated qwen3-32b with qwen3.6-27b
+			if (data.groq.models["qwen/qwen3-32b"]) {
+				delete data.groq.models["qwen/qwen3-32b"];
+			}
+			data.groq.models["qwen/qwen3.6-27b"] = {
+				name: "Qwen3.6 27B",
+				tool_call: true,
+				reasoning: true,
+				limit: { context: 131072, output: 32768 },
+			};
+
 			for (const [modelId, model] of Object.entries(data.groq.models)) {
 				const m = model as ModelsDevModel;
 				if (m.tool_call !== true) continue;
