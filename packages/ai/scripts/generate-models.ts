@@ -509,7 +509,7 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 			data.groq.models["qwen/qwen3.6-27b"] = {
 				name: "Qwen3.6 27B",
 				tool_call: true,
-				limit: { context: 131072, output: 32768 },
+				limit: { context: 131072, output: 16384 },
 			};
 
 			for (const [modelId, model] of Object.entries(data.groq.models)) {
