@@ -15,6 +15,7 @@ import type { AnthropicOptions } from "./anthropic.js";
 import type { AzureOpenAIResponsesOptions } from "./azure-openai-responses.js";
 import type { GoogleOptions } from "./google.js";
 import type { GoogleVertexOptions } from "./google-vertex.js";
+import type { GroqOptions } from "./groq.js";
 import type { MistralOptions } from "./mistral.js";
 import type { OpenAICodexResponsesOptions } from "./openai-codex-responses.js";
 import type { OpenAICompletionsOptions } from "./openai-completions.js";
@@ -51,6 +52,11 @@ interface GoogleProviderModule {
 interface GoogleVertexProviderModule {
 	streamGoogleVertex: StreamFunction<"google-vertex", GoogleVertexOptions>;
 	streamSimpleGoogleVertex: StreamFunction<"google-vertex", SimpleStreamOptions>;
+}
+
+interface GroqProviderModule {
+	streamGroq: StreamFunction<"groq-chat", GroqOptions>;
+	streamSimpleGroq: StreamFunction<"groq-chat", SimpleStreamOptions>;
 }
 
 interface MistralProviderModule {
@@ -100,6 +106,7 @@ let googleProviderModulePromise:
 let googleVertexProviderModulePromise:
 	| Promise<LazyProviderModule<"google-vertex", GoogleVertexOptions, SimpleStreamOptions>>
 	| undefined;
+let groqProviderModulePromise: Promise<LazyProviderModule<"groq-chat", GroqOptions, SimpleStreamOptions>> | undefined;
 let mistralProviderModulePromise:
 	| Promise<LazyProviderModule<"mistral-conversations", MistralOptions, SimpleStreamOptions>>
 	| undefined;
@@ -252,6 +259,17 @@ function loadGoogleVertexProviderModule(): Promise<
 	return googleVertexProviderModulePromise;
 }
 
+function loadGroqProviderModule(): Promise<LazyProviderModule<"groq-chat", GroqOptions, SimpleStreamOptions>> {
+	groqProviderModulePromise ||= import("./groq.js").then((module) => {
+		const provider = module as GroqProviderModule;
+		return {
+			stream: provider.streamGroq,
+			streamSimple: provider.streamSimpleGroq,
+		};
+	});
+	return groqProviderModulePromise;
+}
+
 function loadMistralProviderModule(): Promise<
 	LazyProviderModule<"mistral-conversations", MistralOptions, SimpleStreamOptions>
 > {
@@ -328,6 +346,8 @@ export const streamGoogle = createLazyStream(loadGoogleProviderModule);
 export const streamSimpleGoogle = createLazySimpleStream(loadGoogleProviderModule);
 export const streamGoogleVertex = createLazyStream(loadGoogleVertexProviderModule);
 export const streamSimpleGoogleVertex = createLazySimpleStream(loadGoogleVertexProviderModule);
+export const streamGroq = createLazyStream(loadGroqProviderModule);
+export const streamSimpleGroq = createLazySimpleStream(loadGroqProviderModule);
 export const streamMistral = createLazyStream(loadMistralProviderModule);
 export const streamSimpleMistral = createLazySimpleStream(loadMistralProviderModule);
 export const streamOpenAICodexResponses = createLazyStream(loadOpenAICodexResponsesProviderModule);
@@ -386,6 +406,12 @@ export function registerBuiltInApiProviders(): void {
 		api: "google-vertex",
 		stream: streamGoogleVertex,
 		streamSimple: streamSimpleGoogleVertex,
+	});
+
+	registerApiProvider({
+		api: "groq-chat",
+		stream: streamGroq,
+		streamSimple: streamSimpleGroq,
 	});
 
 	registerApiProvider({

@@ -521,7 +521,7 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 				models.push({
 					id: modelId,
 					name: m.name || modelId,
-					api: "openai-responses",
+					api: "groq-chat",
 					provider: "groq",
 					baseUrl: "https://api.groq.com/openai/v1",
 					reasoning,
@@ -534,7 +534,6 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 					},
 					contextWindow: m.limit?.context || 4096,
 					maxTokens: m.limit?.output || 4096,
-					compat: groqCompat,
 					// Groq qwen models only support "default" reasoning effort level
 					...(reasoning
 						? {

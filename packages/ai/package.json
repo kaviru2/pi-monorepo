@@ -26,6 +26,10 @@
 			"types": "./dist/providers/google-vertex.d.ts",
 			"import": "./dist/providers/google-vertex.js"
 		},
+		"./groq": {
+			"types": "./dist/providers/groq.d.ts",
+			"import": "./dist/providers/groq.js"
+		},
 		"./mistral": {
 			"types": "./dist/providers/mistral.d.ts",
 			"import": "./dist/providers/mistral.js"
@@ -73,6 +77,7 @@
 		"@aws-sdk/client-bedrock-runtime": "^3.1030.0",
 		"@google/genai": "^1.40.0",
 		"@mistralai/mistralai": "^2.2.0",
+		"groq-sdk": "^1.4.0",
 		"openai": "6.26.0",
 		"partial-json": "^0.1.7",
 		"proxy-agent": "^6.5.0",
