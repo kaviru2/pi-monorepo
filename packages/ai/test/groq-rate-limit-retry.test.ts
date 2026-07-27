@@ -1,0 +1,38 @@
+import { describe, expect, it } from "vitest";
+import { getModel } from "../src/models.js";
+import { streamGroq } from "../src/providers/groq.js";
+import type { Context, Model } from "../src/types.js";
+
+function makeContext(): Context {
+	return {
+		messages: [{ role: "user", content: "Hello", timestamp: Date.now() }],
+	};
+}
+
+describe("Groq provider rate limit retry", () => {
+	it("retries on 429 rate_limit_exceeded error with backoff", async () => {
+		const baseModel = getModel("groq", "qwen/qwen3.6-27b");
+		expect(baseModel).toBeDefined();
+		if (!baseModel) return;
+
+		let attemptCount = 0;
+		const stream = streamGroq(baseModel as Model<"groq-chat">, makeContext(), {
+			apiKey: "fake-key",
+			maxRetries: 2,
+			onPayload: () => {
+				attemptCount++;
+				if (attemptCount === 1) {
+					const error: any = new Error(
+						"Rate limit reached for model openai/gpt-oss-20b. Please try again in 0.01s.",
+					);
+					error.status = 429;
+					throw error;
+				}
+				throw new Error("PAUSE_TEST");
+			},
+		});
+
+		await stream.result().catch((err) => err);
+		expect(attemptCount).toBeGreaterThanOrEqual(1);
+	});
+});

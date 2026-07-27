@@ -134,12 +134,36 @@ export const streamGroq: StreamFunction<"groq-chat", GroqOptions> = (
 			const requestOptions = {
 				...(options?.signal ? { signal: options.signal } : {}),
 				...(options?.timeoutMs !== undefined ? { timeout: options.timeoutMs } : {}),
-				...(options?.maxRetries !== undefined ? { maxRetries: options.maxRetries } : {}),
+				maxRetries: 0, // Handle retries manually below to control 10s minimum backoff
 			};
 
-			const { data: responseStream, response } = await client.chat.completions
-				.create(payload as any, requestOptions)
-				.withResponse();
+			const maxRetries = options?.maxRetries ?? 5;
+			let attempts = 0;
+			let responseStream: unknown;
+			let response: any;
+
+			while (true) {
+				try {
+					const res = await client.chat.completions.create(payload as any, requestOptions).withResponse();
+					responseStream = res.data;
+					response = res.response;
+					break;
+				} catch (err) {
+					if (options?.signal?.aborted) {
+						throw err;
+					}
+					if (attempts < maxRetries && isRateLimitOrTransientError(err)) {
+						attempts++;
+						const parsedMs = parseRetryDelayMs(err);
+						const baseWaitMs = 10000; // minimum 10s backoff per requirements
+						const backoffMs = Math.max(parsedMs || 0, Math.round(baseWaitMs * 1.5 ** (attempts - 1)));
+						await sleep(backoffMs, options?.signal);
+						continue;
+					}
+					throw err;
+				}
+			}
+
 			await options?.onResponse?.({ status: response.status, headers: headersToRecord(response.headers) }, model);
 
 			stream.push({ type: "start", partial: output });
@@ -435,4 +459,40 @@ function toChatMessages(messages: Message[], supportsImages: boolean): ChatCompl
 	}
 
 	return result;
+}
+
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+	return new Promise((resolve, reject) => {
+		if (signal?.aborted) {
+			reject(new Error("Request was aborted"));
+			return;
+		}
+		const timeout = setTimeout(resolve, ms);
+		signal?.addEventListener("abort", () => {
+			clearTimeout(timeout);
+			reject(new Error("Request was aborted"));
+		});
+	});
+}
+
+function isRateLimitOrTransientError(error: unknown): boolean {
+	if (!error || typeof error !== "object") return false;
+	const status = (error as any).status || (error as any).statusCode;
+	if (status === 429 || status === 500 || status === 502 || status === 503 || status === 504) {
+		return true;
+	}
+	const msg = String((error as any).message || error);
+	return /rate_limit_exceeded|rate.?limit|too many requests|please try again in/i.test(msg);
+}
+
+function parseRetryDelayMs(error: unknown): number | undefined {
+	const msg = String((error as any)?.message || error);
+	const match = msg.match(/try again in ([\d.]+)s/i);
+	if (match?.[1]) {
+		const sec = Number.parseFloat(match[1]);
+		if (!Number.isNaN(sec)) {
+			return Math.ceil(sec * 1000);
+		}
+	}
+	return undefined;
 }
