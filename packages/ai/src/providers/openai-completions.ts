@@ -33,6 +33,7 @@ import type {
 import { AssistantMessageEventStream } from "../utils/event-stream.js";
 import { headersToRecord } from "../utils/headers.js";
 import { parseStreamingJson } from "../utils/json-parse.js";
+import { sanitizeToolName } from "../utils/sanitize-tool-name.js";
 import { sanitizeSurrogates } from "../utils/sanitize-unicode.js";
 import { isCloudflareProvider, resolveCloudflareBaseUrl } from "./cloudflare.js";
 import { buildCopilotDynamicHeaders, hasCopilotVisionInput } from "./github-copilot-headers.js";
@@ -158,6 +159,7 @@ export const streamOpenAICompletions: StreamFunction<"openai-completions", OpenA
 
 			interface StreamingToolCallBlock extends ToolCall {
 				partialArgs?: string;
+				partialName?: string;
 				streamIndex?: number;
 			}
 			type StreamingBlock = TextContent | ThinkingContent | StreamingToolCallBlock;
@@ -193,6 +195,7 @@ export const streamOpenAICompletions: StreamFunction<"openai-completions", OpenA
 					// Finalize in-place and strip the scratch buffers so replay only
 					// carries parsed arguments.
 					delete block.partialArgs;
+					delete block.partialName;
 					delete block.streamIndex;
 					stream.push({
 						type: "toolcall_end",
@@ -229,12 +232,14 @@ export const streamOpenAICompletions: StreamFunction<"openai-completions", OpenA
 					block = toolCallBlocksById.get(toolCall.id);
 				}
 				if (!block) {
+					const initialRawName = toolCall.function?.name || "";
 					block = {
 						type: "toolCall",
 						id: toolCall.id || "",
-						name: toolCall.function?.name || "",
+						name: sanitizeToolName(initialRawName),
 						arguments: {},
 						partialArgs: "",
+						partialName: initialRawName,
 						streamIndex,
 					};
 					if (streamIndex !== undefined) {
@@ -342,8 +347,9 @@ export const streamOpenAICompletions: StreamFunction<"openai-completions", OpenA
 								block.id = toolCall.id;
 								toolCallBlocksById.set(toolCall.id, block);
 							}
-							if (!block.name && toolCall.function?.name) {
-								block.name = toolCall.function.name;
+							if (toolCall.function?.name) {
+								block.partialName = (block.partialName ?? "") + toolCall.function.name;
+								block.name = sanitizeToolName(block.partialName);
 							}
 
 							let delta = "";

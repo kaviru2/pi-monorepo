@@ -7,6 +7,7 @@ import {
 	type AssistantMessage,
 	type Context,
 	EventStream,
+	sanitizeToolName,
 	streamSimple,
 	type ToolResultMessage,
 	validateToolArguments,
@@ -556,11 +557,19 @@ async function prepareToolCall(
 	config: AgentLoopConfig,
 	signal: AbortSignal | undefined,
 ): Promise<PreparedToolCall | ImmediateToolCallOutcome> {
-	const tool = currentContext.tools?.find((t) => t.name === toolCall.name);
+	let tool = currentContext.tools?.find((t) => t.name === toolCall.name);
 	if (!tool) {
+		const cleanName = sanitizeToolName(toolCall.name);
+		tool = currentContext.tools?.find((t) => t.name === cleanName);
+		if (tool) {
+			toolCall.name = tool.name;
+		}
+	}
+	if (!tool) {
+		const availableTools = (currentContext.tools || []).map((t) => t.name).join(", ");
 		return {
 			kind: "immediate",
-			result: createErrorToolResult(`Tool ${toolCall.name} not found`),
+			result: createErrorToolResult(`Tool "${toolCall.name}" not found. Available tools: [${availableTools}]`),
 			isError: true,
 		};
 	}

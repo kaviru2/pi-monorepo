@@ -22,6 +22,7 @@ import type {
 import { AssistantMessageEventStream } from "../utils/event-stream.js";
 import { headersToRecord } from "../utils/headers.js";
 import { parseStreamingJson } from "../utils/json-parse.js";
+import { sanitizeToolName } from "../utils/sanitize-tool-name.js";
 import { sanitizeSurrogates } from "../utils/sanitize-unicode.js";
 import { buildBaseOptions } from "./simple-options.js";
 import { transformMessages } from "./transform-messages.js";
@@ -150,6 +151,7 @@ export const streamGroq: StreamFunction<"groq-chat", GroqOptions> = (
 				{
 					toolCall: ToolCall;
 					index: number;
+					nameBuffer: string;
 					argsBuffer: string;
 					headerEmitted: boolean;
 				}
@@ -244,10 +246,11 @@ export const streamGroq: StreamFunction<"groq-chat", GroqOptions> = (
 
 							let state = toolCallsByCallId.get(callId);
 							if (!state) {
+								const initialRawName = tcDelta.function?.name || "";
 								const toolCall: ToolCall = {
 									type: "toolCall",
 									id: callId,
-									name: tcDelta.function?.name || "",
+									name: sanitizeToolName(initialRawName),
 									arguments: {},
 								};
 								output.content.push(toolCall);
@@ -255,14 +258,14 @@ export const streamGroq: StreamFunction<"groq-chat", GroqOptions> = (
 								state = {
 									toolCall,
 									index: contentIndex,
+									nameBuffer: initialRawName,
 									argsBuffer: "",
 									headerEmitted: false,
 								};
 								toolCallsByCallId.set(callId, state);
-							}
-
-							if (tcDelta.function?.name && !state.toolCall.name) {
-								state.toolCall.name = tcDelta.function.name;
+							} else if (tcDelta.function?.name) {
+								state.nameBuffer += tcDelta.function.name;
+								state.toolCall.name = sanitizeToolName(state.nameBuffer);
 							}
 
 							if (state.toolCall.name && !state.headerEmitted) {
