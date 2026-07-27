@@ -535,8 +535,14 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 					contextWindow: m.limit?.context || 4096,
 					maxTokens: m.limit?.output || 4096,
 					compat: groqCompat,
-					// Groq supports none|default|low|medium|high — map "minimal" to "low"
-					...(reasoning ? { thinkingLevelMap: { minimal: "low", low: "low", medium: "medium", high: "high", off: "none" } } : {}),
+					// Groq qwen models only support "default" reasoning effort level
+					...(reasoning
+						? {
+								thinkingLevelMap: modelId.includes("qwen")
+									? { minimal: "default", low: "default", medium: "default", high: "default", off: "none" }
+									: { minimal: "low", low: "low", medium: "medium", high: "high", off: "none" },
+						  }
+						: {}),
 				});
 			}
 		}

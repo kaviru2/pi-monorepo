@@ -5608,7 +5608,7 @@ export const MODELS = {
 			baseUrl: "https://api.groq.com/openai/v1",
 			compat: {"sendSessionIdHeader":false,"supportsLongCacheRetention":false,"supportsIncludeEncryptedReasoning":false,"supportsReasoningSummary":false},
 			reasoning: true,
-			thinkingLevelMap: {"minimal":"low","low":"low","medium":"medium","high":"high","off":"none"},
+			thinkingLevelMap: {"minimal":"default","low":"default","medium":"default","high":"default","off":"none"},
 			input: ["text"],
 			cost: {
 				input: 0,
