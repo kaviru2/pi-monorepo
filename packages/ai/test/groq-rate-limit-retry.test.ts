@@ -35,4 +35,32 @@ describe("Groq provider rate limit retry", () => {
 		await stream.result().catch((err) => err);
 		expect(attemptCount).toBeGreaterThanOrEqual(1);
 	});
+
+	it("retries on Groq server-side Parsing failed (parse_error) transient errors", async () => {
+		const baseModel = getModel("groq", "qwen/qwen3.6-27b");
+		expect(baseModel).toBeDefined();
+		if (!baseModel) return;
+
+		let attemptCount = 0;
+		const stream = streamGroq(baseModel as Model<"groq-chat">, makeContext(), {
+			apiKey: "fake-key",
+			maxRetries: 2,
+			onPayload: () => {
+				attemptCount++;
+				if (attemptCount === 1) {
+					const error: any = new Error(
+						"Parsing failed. The model generated output that could not be parsed. Please adjust your prompt. See 'failed_generation' for more details.",
+					);
+					error.status = 400;
+					error.code = "parse_error";
+					throw error;
+				}
+				throw new Error("PAUSE_TEST");
+			},
+		});
+
+		const res = await stream.result().catch((err) => err);
+		expect(attemptCount).toBe(2);
+		expect(res.diagnostics?.some((d: any) => d.type === "retry" && d.details?.reason === "parse_error")).toBe(true);
+	});
 });

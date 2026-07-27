@@ -19,6 +19,7 @@ import type {
 	ThinkingContent,
 	ToolCall,
 } from "../types.js";
+import { appendAssistantMessageDiagnostic, createAssistantMessageDiagnostic } from "../utils/diagnostics.js";
 import { AssistantMessageEventStream } from "../utils/event-stream.js";
 import { headersToRecord } from "../utils/headers.js";
 import { parseStreamingJson } from "../utils/json-parse.js";
@@ -121,20 +122,10 @@ export const streamGroq: StreamFunction<"groq-chat", GroqOptions> = (
 				}
 			}
 
-			let payload = params;
-			if (options?.onPayload) {
-				try {
-					const next = await options.onPayload(payload, model);
-					if (next !== undefined) payload = next as typeof params;
-				} catch {
-					// Callback threw intentionally (e.g. in tests)
-				}
-			}
-
 			const requestOptions = {
 				...(options?.signal ? { signal: options.signal } : {}),
 				...(options?.timeoutMs !== undefined ? { timeout: options.timeoutMs } : {}),
-				maxRetries: 0, // Handle retries manually below to control 10s minimum backoff
+				maxRetries: 0, // Handle retries manually below to control backoff & logging
 			};
 
 			const maxRetries = options?.maxRetries ?? 5;
@@ -144,6 +135,12 @@ export const streamGroq: StreamFunction<"groq-chat", GroqOptions> = (
 
 			while (true) {
 				try {
+					let payload = params;
+					if (options?.onPayload) {
+						const next = await options.onPayload(payload, model);
+						if (next !== undefined) payload = next as typeof params;
+					}
+
 					const res = await client.chat.completions.create(payload as any, requestOptions).withResponse();
 					responseStream = res.data;
 					response = res.response;
@@ -152,11 +149,28 @@ export const streamGroq: StreamFunction<"groq-chat", GroqOptions> = (
 					if (options?.signal?.aborted) {
 						throw err;
 					}
-					if (attempts < maxRetries && isRateLimitOrTransientError(err)) {
+					const retryInfo = isRateLimitOrTransientError(err);
+					if (attempts < maxRetries && retryInfo.isRetryable) {
 						attempts++;
 						const parsedMs = parseRetryDelayMs(err);
-						const baseWaitMs = 10000; // minimum 10s backoff per requirements
+						const baseWaitMs = retryInfo.reason === "rate_limit" ? 10000 : 2000;
 						const backoffMs = Math.max(parsedMs || 0, Math.round(baseWaitMs * 1.5 ** (attempts - 1)));
+
+						const errorText = err instanceof Error ? err.message : String(err);
+						console.warn(
+							`[Groq Retry] Attempt ${attempts}/${maxRetries} failed (${retryInfo.reason}). Retrying in ${(backoffMs / 1000).toFixed(2)}s... Error: ${errorText}`,
+						);
+
+						appendAssistantMessageDiagnostic(
+							output,
+							createAssistantMessageDiagnostic("retry", err, {
+								attempt: attempts,
+								maxRetries,
+								backoffMs,
+								reason: retryInfo.reason,
+							}),
+						);
+
 						await sleep(backoffMs, options?.signal);
 						continue;
 					}
@@ -475,14 +489,35 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 	});
 }
 
-function isRateLimitOrTransientError(error: unknown): boolean {
-	if (!error || typeof error !== "object") return false;
+function isRateLimitOrTransientError(error: unknown): { isRetryable: boolean; reason: string } {
+	if (!error || typeof error !== "object") return { isRetryable: false, reason: "none" };
 	const status = (error as any).status || (error as any).statusCode;
-	if (status === 429 || status === 500 || status === 502 || status === 503 || status === 504) {
-		return true;
+	const code = (error as any).code || (error as any).error?.code;
+	const msg = String((error as any).message || (error as any).error?.message || error);
+
+	if (status === 429 || /rate_limit_exceeded|rate.?limit|too many requests|please try again in/i.test(msg)) {
+		return { isRetryable: true, reason: "rate_limit" };
 	}
-	const msg = String((error as any).message || error);
-	return /rate_limit_exceeded|rate.?limit|too many requests|please try again in/i.test(msg);
+
+	if (
+		code === "parse_error" ||
+		code === "failed_generation" ||
+		/parsing failed|failed_generation|could not be parsed/i.test(msg)
+	) {
+		return { isRetryable: true, reason: "parse_error" };
+	}
+
+	if (
+		status === 500 ||
+		status === 502 ||
+		status === 503 ||
+		status === 504 ||
+		/server error|overloaded|service.?unavailable/i.test(msg)
+	) {
+		return { isRetryable: true, reason: "server_error" };
+	}
+
+	return { isRetryable: false, reason: "none" };
 }
 
 function parseRetryDelayMs(error: unknown): number | undefined {
