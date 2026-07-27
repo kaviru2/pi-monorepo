@@ -130,10 +130,41 @@ export const streamGroq: StreamFunction<"groq-chat", GroqOptions> = (
 
 			const maxRetries = options?.maxRetries ?? 5;
 			let attempts = 0;
-			let responseStream: unknown;
-			let response: any;
+			let startEmitted = false;
 
+			// Retry loop covers both the HTTP request AND the full streaming consumption.
+			// This ensures mid-stream Groq errors (tool name validation, parse failures) are
+			// retried just like pre-stream errors.
 			while (true) {
+				// Reset mutable output state before each attempt so replayed events are clean.
+				output.content = [];
+				output.stopReason = "stop";
+				output.errorMessage = undefined;
+				output.responseModel = undefined;
+				output.responseId = undefined;
+				output.usage = {
+					input: 0,
+					output: 0,
+					cacheRead: 0,
+					cacheWrite: 0,
+					totalTokens: 0,
+					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+				};
+
+				let currentTextBlock: TextContent | undefined;
+				let currentThinkingBlock: ThinkingContent | undefined;
+				const toolCallsByCallId = new Map<
+					string,
+					{
+						toolCall: ToolCall;
+						index: number;
+						nameBuffer: string;
+						argsBuffer: string;
+						headerEmitted: boolean;
+					}
+				>();
+				const toolCallsByIndex = new Map<number, string>();
+
 				try {
 					let payload = params;
 					if (options?.onPayload) {
@@ -142,12 +173,217 @@ export const streamGroq: StreamFunction<"groq-chat", GroqOptions> = (
 					}
 
 					const res = await client.chat.completions.create(payload as any, requestOptions).withResponse();
-					responseStream = res.data;
-					response = res.response;
-					break;
+					await options?.onResponse?.(
+						{ status: res.response.status, headers: headersToRecord(res.response.headers) },
+						model,
+					);
+
+					if (!startEmitted) {
+						stream.push({ type: "start", partial: output });
+						startEmitted = true;
+					}
+
+					for await (const chunk of res.data as unknown as AsyncIterable<ChatCompletionChunk>) {
+						if (options?.signal?.aborted) {
+							throw new Error("Request was aborted");
+						}
+
+						if (chunk.model && !output.responseModel) {
+							output.responseModel = chunk.model;
+						}
+						if (chunk.id && !output.responseId) {
+							output.responseId = chunk.id;
+						}
+
+						const choice = chunk.choices?.[0];
+						if (choice?.delta) {
+							const delta = choice.delta as any;
+
+							// Native Groq reasoning delta parsing
+							const reasoningText = delta.reasoning || delta.reasoning_content;
+							if (reasoningText) {
+								if (!currentThinkingBlock) {
+									currentThinkingBlock = { type: "thinking", thinking: "" };
+									output.content.push(currentThinkingBlock);
+									const contentIndex = output.content.length - 1;
+									stream.push({ type: "thinking_start", contentIndex, partial: output });
+								}
+								const cleanDelta = sanitizeSurrogates(reasoningText);
+								currentThinkingBlock.thinking += cleanDelta;
+								const contentIndex = output.content.indexOf(currentThinkingBlock);
+								stream.push({ type: "thinking_delta", contentIndex, delta: cleanDelta, partial: output });
+							}
+
+							// Standard Content Text
+							if (delta.content) {
+								if (currentThinkingBlock) {
+									const contentIndex = output.content.indexOf(currentThinkingBlock);
+									stream.push({
+										type: "thinking_end",
+										contentIndex,
+										content: currentThinkingBlock.thinking,
+										partial: output,
+									});
+									currentThinkingBlock = undefined;
+								}
+
+								if (!currentTextBlock) {
+									currentTextBlock = { type: "text", text: "" };
+									output.content.push(currentTextBlock);
+									const contentIndex = output.content.length - 1;
+									stream.push({ type: "text_start", contentIndex, partial: output });
+								}
+								const cleanDelta = sanitizeSurrogates(delta.content);
+								currentTextBlock.text += cleanDelta;
+								const contentIndex = output.content.indexOf(currentTextBlock);
+								stream.push({ type: "text_delta", contentIndex, delta: cleanDelta, partial: output });
+							}
+
+							// Tool Call Deltas
+							if (delta.tool_calls) {
+								if (currentThinkingBlock) {
+									const contentIndex = output.content.indexOf(currentThinkingBlock);
+									stream.push({
+										type: "thinking_end",
+										contentIndex,
+										content: currentThinkingBlock.thinking,
+										partial: output,
+									});
+									currentThinkingBlock = undefined;
+								}
+								if (currentTextBlock) {
+									const contentIndex = output.content.indexOf(currentTextBlock);
+									stream.push({
+										type: "text_end",
+										contentIndex,
+										content: currentTextBlock.text,
+										partial: output,
+									});
+									currentTextBlock = undefined;
+								}
+
+								for (const tcDelta of delta.tool_calls) {
+									const index = tcDelta.index;
+									let callId = tcDelta.id;
+
+									if (callId) {
+										toolCallsByIndex.set(index, callId);
+									} else {
+										callId = toolCallsByIndex.get(index);
+									}
+
+									if (!callId) continue;
+
+									let state = toolCallsByCallId.get(callId);
+									if (!state) {
+										const initialRawName = tcDelta.function?.name || "";
+										const toolCall: ToolCall = {
+											type: "toolCall",
+											id: callId,
+											name: sanitizeToolName(initialRawName),
+											arguments: {},
+										};
+										output.content.push(toolCall);
+										const contentIndex = output.content.length - 1;
+										state = {
+											toolCall,
+											index: contentIndex,
+											nameBuffer: initialRawName,
+											argsBuffer: "",
+											headerEmitted: false,
+										};
+										toolCallsByCallId.set(callId, state);
+									} else if (tcDelta.function?.name) {
+										state.nameBuffer += tcDelta.function.name;
+										state.toolCall.name = sanitizeToolName(state.nameBuffer);
+									}
+
+									if (state.toolCall.name && !state.headerEmitted) {
+										stream.push({ type: "toolcall_start", contentIndex: state.index, partial: output });
+										state.headerEmitted = true;
+									}
+
+									if (tcDelta.function?.arguments) {
+										const argChunk = sanitizeSurrogates(tcDelta.function.arguments);
+										state.argsBuffer += argChunk;
+										if (state.headerEmitted) {
+											stream.push({
+												type: "toolcall_delta",
+												contentIndex: state.index,
+												delta: argChunk,
+												partial: output,
+											});
+										}
+									}
+								}
+							}
+						}
+
+						if (choice?.finish_reason) {
+							switch (choice.finish_reason) {
+								case "stop":
+									output.stopReason = "stop";
+									break;
+								case "length":
+									output.stopReason = "length";
+									break;
+								case "tool_calls":
+									output.stopReason = "toolUse";
+									break;
+								default:
+									output.stopReason = "stop";
+							}
+						}
+
+						const rawChunk = chunk as any;
+						if (rawChunk.usage) {
+							output.usage.input = rawChunk.usage.prompt_tokens || 0;
+							output.usage.output = rawChunk.usage.completion_tokens || 0;
+							output.usage.totalTokens = rawChunk.usage.total_tokens || 0;
+							calculateCost(model, output.usage);
+						}
+					}
+
+					// Finalize active blocks
+					if (currentThinkingBlock) {
+						const contentIndex = output.content.indexOf(currentThinkingBlock);
+						stream.push({
+							type: "thinking_end",
+							contentIndex,
+							content: currentThinkingBlock.thinking,
+							partial: output,
+						});
+					}
+					if (currentTextBlock) {
+						const contentIndex = output.content.indexOf(currentTextBlock);
+						stream.push({ type: "text_end", contentIndex, content: currentTextBlock.text, partial: output });
+					}
+
+					for (const state of toolCallsByCallId.values()) {
+						state.toolCall.arguments = parseStreamingJson(state.argsBuffer) || {};
+						stream.push({
+							type: "toolcall_end",
+							contentIndex: state.index,
+							toolCall: state.toolCall,
+							partial: output,
+						});
+					}
+
+					const sr = output.stopReason as string;
+					const doneReason = (sr === "aborted" || sr === "error" ? "stop" : output.stopReason) as
+						| "stop"
+						| "length"
+						| "toolUse";
+					stream.push({ type: "done", reason: doneReason, message: output });
+					stream.end();
+					return; // success — exit retry loop
 				} catch (err) {
 					if (options?.signal?.aborted) {
-						throw err;
+						output.stopReason = "aborted";
+						output.errorMessage = err instanceof Error ? err.message : String(err);
+						stream.push({ type: "error", reason: "aborted", error: output });
+						stream.end();
+						return;
 					}
 					const retryInfo = isRateLimitOrTransientError(err);
 					if (attempts < maxRetries && retryInfo.isRetryable) {
@@ -174,215 +410,16 @@ export const streamGroq: StreamFunction<"groq-chat", GroqOptions> = (
 						await sleep(backoffMs, options?.signal);
 						continue;
 					}
-					throw err;
+					// Non-retryable or exhausted retries
+					output.stopReason = "error";
+					output.errorMessage = err instanceof Error ? err.message : JSON.stringify(err);
+					stream.push({ type: "error", reason: "error", error: output });
+					stream.end();
+					return;
 				}
-			}
-
-			await options?.onResponse?.({ status: response.status, headers: headersToRecord(response.headers) }, model);
-
-			stream.push({ type: "start", partial: output });
-
-			let currentTextBlock: TextContent | undefined;
-			let currentThinkingBlock: ThinkingContent | undefined;
-			const toolCallsByCallId = new Map<
-				string,
-				{
-					toolCall: ToolCall;
-					index: number;
-					nameBuffer: string;
-					argsBuffer: string;
-					headerEmitted: boolean;
-				}
-			>();
-			const toolCallsByIndex = new Map<number, string>();
-
-			for await (const chunk of responseStream as unknown as AsyncIterable<ChatCompletionChunk>) {
-				if (options?.signal?.aborted) {
-					throw new Error("Request was aborted");
-				}
-
-				if (chunk.model && !output.responseModel) {
-					output.responseModel = chunk.model;
-				}
-				if (chunk.id && !output.responseId) {
-					output.responseId = chunk.id;
-				}
-
-				const choice = chunk.choices?.[0];
-				if (choice?.delta) {
-					const delta = choice.delta as any;
-
-					// Native Groq reasoning delta parsing
-					const reasoningText = delta.reasoning || delta.reasoning_content;
-					if (reasoningText) {
-						if (!currentThinkingBlock) {
-							currentThinkingBlock = { type: "thinking", thinking: "" };
-							output.content.push(currentThinkingBlock);
-							const contentIndex = output.content.length - 1;
-							stream.push({ type: "thinking_start", contentIndex, partial: output });
-						}
-						const cleanDelta = sanitizeSurrogates(reasoningText);
-						currentThinkingBlock.thinking += cleanDelta;
-						const contentIndex = output.content.indexOf(currentThinkingBlock);
-						stream.push({ type: "thinking_delta", contentIndex, delta: cleanDelta, partial: output });
-					}
-
-					// Standard Content Text
-					if (delta.content) {
-						if (currentThinkingBlock) {
-							const contentIndex = output.content.indexOf(currentThinkingBlock);
-							stream.push({
-								type: "thinking_end",
-								contentIndex,
-								content: currentThinkingBlock.thinking,
-								partial: output,
-							});
-							currentThinkingBlock = undefined;
-						}
-
-						if (!currentTextBlock) {
-							currentTextBlock = { type: "text", text: "" };
-							output.content.push(currentTextBlock);
-							const contentIndex = output.content.length - 1;
-							stream.push({ type: "text_start", contentIndex, partial: output });
-						}
-						const cleanDelta = sanitizeSurrogates(delta.content);
-						currentTextBlock.text += cleanDelta;
-						const contentIndex = output.content.indexOf(currentTextBlock);
-						stream.push({ type: "text_delta", contentIndex, delta: cleanDelta, partial: output });
-					}
-
-					// Tool Call Deltas
-					if (delta.tool_calls) {
-						if (currentThinkingBlock) {
-							const contentIndex = output.content.indexOf(currentThinkingBlock);
-							stream.push({
-								type: "thinking_end",
-								contentIndex,
-								content: currentThinkingBlock.thinking,
-								partial: output,
-							});
-							currentThinkingBlock = undefined;
-						}
-						if (currentTextBlock) {
-							const contentIndex = output.content.indexOf(currentTextBlock);
-							stream.push({ type: "text_end", contentIndex, content: currentTextBlock.text, partial: output });
-							currentTextBlock = undefined;
-						}
-
-						for (const tcDelta of delta.tool_calls) {
-							const index = tcDelta.index;
-							let callId = tcDelta.id;
-
-							if (callId) {
-								toolCallsByIndex.set(index, callId);
-							} else {
-								callId = toolCallsByIndex.get(index);
-							}
-
-							if (!callId) continue;
-
-							let state = toolCallsByCallId.get(callId);
-							if (!state) {
-								const initialRawName = tcDelta.function?.name || "";
-								const toolCall: ToolCall = {
-									type: "toolCall",
-									id: callId,
-									name: sanitizeToolName(initialRawName),
-									arguments: {},
-								};
-								output.content.push(toolCall);
-								const contentIndex = output.content.length - 1;
-								state = {
-									toolCall,
-									index: contentIndex,
-									nameBuffer: initialRawName,
-									argsBuffer: "",
-									headerEmitted: false,
-								};
-								toolCallsByCallId.set(callId, state);
-							} else if (tcDelta.function?.name) {
-								state.nameBuffer += tcDelta.function.name;
-								state.toolCall.name = sanitizeToolName(state.nameBuffer);
-							}
-
-							if (state.toolCall.name && !state.headerEmitted) {
-								stream.push({ type: "toolcall_start", contentIndex: state.index, partial: output });
-								state.headerEmitted = true;
-							}
-
-							if (tcDelta.function?.arguments) {
-								const argChunk = sanitizeSurrogates(tcDelta.function.arguments);
-								state.argsBuffer += argChunk;
-								if (state.headerEmitted) {
-									stream.push({
-										type: "toolcall_delta",
-										contentIndex: state.index,
-										delta: argChunk,
-										partial: output,
-									});
-								}
-							}
-						}
-					}
-				}
-
-				if (choice?.finish_reason) {
-					switch (choice.finish_reason) {
-						case "stop":
-							output.stopReason = "stop";
-							break;
-						case "length":
-							output.stopReason = "length";
-							break;
-						case "tool_calls":
-							output.stopReason = "toolUse";
-							break;
-						default:
-							output.stopReason = "stop";
-					}
-				}
-
-				const rawChunk = chunk as any;
-				if (rawChunk.usage) {
-					output.usage.input = rawChunk.usage.prompt_tokens || 0;
-					output.usage.output = rawChunk.usage.completion_tokens || 0;
-					output.usage.totalTokens = rawChunk.usage.total_tokens || 0;
-					calculateCost(model, output.usage);
-				}
-			}
-
-			// Finalize active blocks
-			if (currentThinkingBlock) {
-				const contentIndex = output.content.indexOf(currentThinkingBlock);
-				stream.push({
-					type: "thinking_end",
-					contentIndex,
-					content: currentThinkingBlock.thinking,
-					partial: output,
-				});
-			}
-			if (currentTextBlock) {
-				const contentIndex = output.content.indexOf(currentTextBlock);
-				stream.push({ type: "text_end", contentIndex, content: currentTextBlock.text, partial: output });
-			}
-
-			for (const state of toolCallsByCallId.values()) {
-				state.toolCall.arguments = parseStreamingJson(state.argsBuffer) || {};
-				stream.push({
-					type: "toolcall_end",
-					contentIndex: state.index,
-					toolCall: state.toolCall,
-					partial: output,
-				});
-			}
-
-			const doneReason = (
-				output.stopReason === "aborted" || output.stopReason === "error" ? "stop" : output.stopReason
-			) as "stop" | "length" | "toolUse";
-			stream.push({ type: "done", reason: doneReason, message: output });
-			stream.end();
+			} // end while
 		} catch (error) {
+			// Covers unexpected throws from setup code before the while loop (e.g. transformMessages)
 			output.stopReason = options?.signal?.aborted ? "aborted" : "error";
 			output.errorMessage = error instanceof Error ? error.message : JSON.stringify(error);
 			stream.push({ type: "error", reason: output.stopReason, error: output });
