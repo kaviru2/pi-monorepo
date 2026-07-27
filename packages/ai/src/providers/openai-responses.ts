@@ -43,6 +43,7 @@ function getCompat(model: Model<"openai-responses">): Required<OpenAIResponsesCo
 		supportsLongCacheRetention: model.compat?.supportsLongCacheRetention ?? true,
 		supportsIncludeEncryptedReasoning: model.compat?.supportsIncludeEncryptedReasoning ?? true,
 		supportsReasoningSummary: model.compat?.supportsReasoningSummary ?? true,
+		supportsReasoningEffort: model.compat?.supportsReasoningEffort ?? true,
 	};
 }
 
@@ -247,11 +248,10 @@ function buildParams(model: Model<"openai-responses">, context: Context, options
 		params.tools = convertResponsesTools(context.tools);
 	}
 
-	if (model.reasoning) {
+	if (model.reasoning && compat.supportsReasoningEffort) {
 		if (options?.reasoningEffort || options?.reasoningSummary) {
-			const effort = options?.reasoningEffort
-				? (model.thinkingLevelMap?.[options.reasoningEffort] ?? options.reasoningEffort)
-				: "medium";
+			const rawEffort = options?.reasoningEffort ?? "medium";
+			const effort = model.thinkingLevelMap?.[rawEffort] ?? rawEffort;
 			params.reasoning = {
 				effort: effort as NonNullable<typeof params.reasoning>["effort"],
 				...(compat.supportsReasoningSummary ? { summary: options?.reasoningSummary || "auto" } : {}),

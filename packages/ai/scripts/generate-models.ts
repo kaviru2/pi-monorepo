@@ -499,6 +499,7 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 			supportsLongCacheRetention: false,
 			supportsIncludeEncryptedReasoning: false,
 			supportsReasoningSummary: false,
+			supportsReasoningEffort: false,
 		};
 
 		if (data.groq?.models) {

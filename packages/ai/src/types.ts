@@ -408,6 +408,8 @@ export interface OpenAIResponsesCompat {
 	supportsIncludeEncryptedReasoning?: boolean;
 	/** Whether the provider supports `reasoning.summary`. Default: true. */
 	supportsReasoningSummary?: boolean;
+	/** Whether the provider supports `reasoning.effort`. Default: true. */
+	supportsReasoningEffort?: boolean;
 }
 
 /** Compatibility settings for Anthropic Messages-compatible APIs. */
