@@ -64,9 +64,14 @@ export const streamGroq: StreamFunction<"groq-chat", GroqOptions> = (
 		try {
 			const apiKey = options?.apiKey || getEnvApiKey(model.provider) || "";
 
+			let baseURL = model.baseUrl || "https://api.groq.com";
+			if (baseURL.endsWith("/openai/v1")) {
+				baseURL = baseURL.slice(0, -"/openai/v1".length);
+			}
+
 			const client = new Groq({
 				apiKey,
-				baseURL: model.baseUrl || "https://api.groq.com/openai/v1",
+				baseURL,
 				defaultHeaders: options?.headers,
 			});
 
