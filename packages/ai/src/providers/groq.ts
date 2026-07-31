@@ -544,6 +544,14 @@ function isRateLimitOrTransientError(error: unknown): { isRetryable: boolean; re
 		return { isRetryable: true, reason: "parse_error" };
 	}
 
+	// The model hallucinated a tool name the serving harness's own tool-call validator rejects
+	// (e.g. "attempted to call tool 'run' which was not in request.tools") — this is the same
+	// class of malformed-structured-output failure as parse_error/failed_generation above, just
+	// with different wording, and a retry gives the model another chance to emit a valid call.
+	if (/tool call validation failed|not in request\.tools/i.test(msg)) {
+		return { isRetryable: true, reason: "tool_validation_error" };
+	}
+
 	if (
 		status === 500 ||
 		status === 502 ||
