@@ -131,6 +131,12 @@ export const streamGroq: StreamFunction<"groq-chat", GroqOptions> = (
 			const maxRetries = options?.maxRetries ?? 5;
 			let attempts = 0;
 			let startEmitted = false;
+			// A tool_validation_error retry blindly resends the identical request — if the model has a
+			// systematic bias toward hallucinating an operation value (e.g. "run") as the tool name itself,
+			// every retry samples the same mistake again with no signal telling it what went wrong. Inject
+			// one corrective message the first time this happens so the retries that follow actually have a
+			// chance to self-correct, instead of burning the whole retry budget on repeats of the same error.
+			let toolNameCorrectionInjected = false;
 
 			// Retry loop covers both the HTTP request AND the full streaming consumption.
 			// This ensures mid-stream Groq errors (tool name validation, parse failures) are
@@ -397,6 +403,13 @@ export const streamGroq: StreamFunction<"groq-chat", GroqOptions> = (
 							`[Groq Retry] Attempt ${attempts}/${maxRetries} failed (${retryInfo.reason}). Retrying in ${(backoffMs / 1000).toFixed(2)}s... Error: ${errorText}`,
 						);
 
+						let correctedToolName: string | undefined;
+						if (retryInfo.reason === "tool_validation_error" && !toolNameCorrectionInjected) {
+							toolNameCorrectionInjected = true;
+							correctedToolName = extractInvalidToolName(err);
+							formattedMessages.push(buildToolNameCorrectionMessage(correctedToolName));
+						}
+
 						appendAssistantMessageDiagnostic(
 							output,
 							createAssistantMessageDiagnostic("retry", err, {
@@ -404,6 +417,7 @@ export const streamGroq: StreamFunction<"groq-chat", GroqOptions> = (
 								maxRetries,
 								backoffMs,
 								reason: retryInfo.reason,
+								...(correctedToolName !== undefined ? { correctedToolName } : {}),
 							}),
 						);
 
@@ -575,4 +589,27 @@ function parseRetryDelayMs(error: unknown): number | undefined {
 		}
 	}
 	return undefined;
+}
+
+/** Pulls the hallucinated tool name out of a `tool_validation_error` message, if present. */
+function extractInvalidToolName(error: unknown): string | undefined {
+	const msg = String((error as any)?.message || (error as any)?.error?.message || error);
+	const match = msg.match(/attempted to call tool ['"]([^'"]+)['"]/i);
+	return match?.[1];
+}
+
+/**
+ * Corrective message injected once, the first time a `tool_validation_error` retry fires — see
+ * `toolNameCorrectionInjected` above for why blindly resending the same request isn't enough.
+ */
+function buildToolNameCorrectionMessage(invalidName: string | undefined): ChatCompletionMessageParam {
+	const namePart = invalidName ? `"${invalidName}"` : "an invalid name";
+	return {
+		role: "user",
+		content:
+			`Your previous tool call used ${namePart} as the tool name, which does not exist. Operation values ` +
+			`like 'run', 'start', 'write', 'read', and 'kill' belong INSIDE the arguments object (e.g. ` +
+			`{"operation": "run", "command": "..."}), never as the tool name itself — the tool name must be one ` +
+			"of the actual tool names you were given. Reissue your intended action using the correct tool name.",
+	};
 }
