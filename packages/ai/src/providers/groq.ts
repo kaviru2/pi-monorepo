@@ -128,7 +128,7 @@ export const streamGroq: StreamFunction<"groq-chat", GroqOptions> = (
 				maxRetries: 0, // Handle retries manually below to control backoff & logging
 			};
 
-			const maxRetries = options?.maxRetries ?? 5;
+			const maxRetries = options?.maxRetries ?? 20;
 			let attempts = 0;
 			let startEmitted = false;
 
@@ -390,7 +390,15 @@ export const streamGroq: StreamFunction<"groq-chat", GroqOptions> = (
 						attempts++;
 						const parsedMs = parseRetryDelayMs(err);
 						const baseWaitMs = retryInfo.reason === "rate_limit" ? 10000 : 2000;
-						const backoffMs = Math.max(parsedMs || 0, Math.round(baseWaitMs * 1.5 ** (attempts - 1)));
+						// Capped exponential backoff — with maxRetries now allowing up to 20 attempts (mainly
+						// to ride out shared-org rate-limit congestion), letting 1.5^(attempts-1) grow
+						// unbounded would reach multi-hour waits by the last few attempts, with nothing to
+						// abort a single stuck attempt against the caller's own deadline. Capping the ceiling
+						// means more retries translate into "keep trying every ~maxBackoffMs for longer,"
+						// not "wait exponentially longer between each one."
+						const maxBackoffMs = retryInfo.reason === "rate_limit" ? 60000 : 30000;
+						const uncappedBackoffMs = Math.round(baseWaitMs * 1.5 ** (attempts - 1));
+						const backoffMs = Math.max(parsedMs || 0, Math.min(uncappedBackoffMs, maxBackoffMs));
 
 						const errorText = err instanceof Error ? err.message : String(err);
 						console.warn(
