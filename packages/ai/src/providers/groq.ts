@@ -336,10 +336,11 @@ export const streamGroq: StreamFunction<"groq-chat", GroqOptions> = (
 						}
 
 						const rawChunk = chunk as any;
-						if (rawChunk.usage) {
-							output.usage.input = rawChunk.usage.prompt_tokens || 0;
-							output.usage.output = rawChunk.usage.completion_tokens || 0;
-							output.usage.totalTokens = rawChunk.usage.total_tokens || 0;
+						const usage = rawChunk.usage || rawChunk.x_groq?.usage;
+						if (usage) {
+							output.usage.input = usage.prompt_tokens || 0;
+							output.usage.output = usage.completion_tokens || 0;
+							output.usage.totalTokens = usage.total_tokens || 0;
 							calculateCost(model, output.usage);
 						}
 					}
