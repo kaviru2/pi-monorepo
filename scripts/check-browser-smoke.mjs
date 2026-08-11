@@ -14,6 +14,17 @@ try {
 		format: "esm",
 		logLevel: "silent",
 		outfile: outputPath,
+		// @mistralai/mistralai statically imports these for optional OTEL tracing (see
+		// peerDependenciesMeta in its package.json — all marked optional, none installed here since
+		// nothing in this repo actually uses telemetry). A static bundler resolves the import
+		// regardless of whether the code path runs, so they must be marked external rather than left
+		// for npm to install just to satisfy this smoke build.
+		external: [
+			"@opentelemetry/api",
+			"@opentelemetry/exporter-trace-otlp-http",
+			"@opentelemetry/resources",
+			"@opentelemetry/sdk-trace-base",
+		],
 	});
 	process.exit(0);
 } catch (error) {
