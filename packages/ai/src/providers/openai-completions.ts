@@ -232,14 +232,19 @@ export const streamOpenAICompletions: StreamFunction<"openai-completions", OpenA
 					block = toolCallBlocksById.get(toolCall.id);
 				}
 				if (!block) {
-					const initialRawName = toolCall.function?.name || "";
+					// Name accumulation happens exactly once, in the caller's loop right after this
+					// returns (every delta, including this first one, goes through that single path) --
+					// seeding `partialName`/`name` from `toolCall.function.name` here too would double it
+					// whenever a provider sends the whole name in one initial chunk (observed: Qwen models
+					// via OpenRouter sending a short name like "read_skill" whole, producing
+					// "read_skillread_skill" once the caller's accumulation step ran a second time).
 					block = {
 						type: "toolCall",
 						id: toolCall.id || "",
-						name: sanitizeToolName(initialRawName),
+						name: "",
 						arguments: {},
 						partialArgs: "",
-						partialName: initialRawName,
+						partialName: "",
 						streamIndex,
 					};
 					if (streamIndex !== undefined) {
