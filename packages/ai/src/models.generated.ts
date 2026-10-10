@@ -13771,6 +13771,23 @@ export const MODELS = {
 			contextWindow: 1000000,
 			maxTokens: 65536,
 		} satisfies Model<"openai-completions">,
+		"qwen/qwen3.8-flash": {
+			id: "qwen/qwen3.8-flash",
+			name: "Qwen: Qwen3.8 Flash",
+			api: "openai-completions",
+			provider: "openrouter",
+			baseUrl: "https://openrouter.ai/api/v1",
+			reasoning: true,
+			input: ["text", "image"],
+			cost: {
+				input: 0.15,
+				output: 0.47,
+				cacheRead: 0.016,
+				cacheWrite: 0.2,
+			},
+			contextWindow: 1000000,
+			maxTokens: 131072,
+		} satisfies Model<"openai-completions">,
 		"rekaai/reka-edge": {
 			id: "rekaai/reka-edge",
 			name: "Reka Edge",
