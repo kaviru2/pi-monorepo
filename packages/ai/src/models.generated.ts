@@ -13771,6 +13771,12 @@ export const MODELS = {
 			contextWindow: 1000000,
 			maxTokens: 65536,
 		} satisfies Model<"openai-completions">,
+		// Hand-added, not from the last `npm run generate-models` run: that regeneration currently
+		// breaks on an unrelated upstream models.dev schema rename (their `kimi-for-coding` key
+		// became `kimi-code-plan-global`, which generate-models.ts hasn't been updated for yet --
+		// see scripts/generate-models.ts line ~1012). Values below were taken directly from
+		// models.dev's API response for this one model rather than a full regeneration. Remove this
+		// comment once generate-models.ts is fixed and a real regeneration reproduces this entry.
 		"qwen/qwen3.8-flash": {
 			id: "qwen/qwen3.8-flash",
 			name: "Qwen: Qwen3.8 Flash",

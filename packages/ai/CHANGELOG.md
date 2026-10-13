@@ -6,6 +6,7 @@
 
 - Added Together AI as a built-in OpenAI-compatible provider with generated model metadata and `TOGETHER_API_KEY` authentication ([#3624](https://github.com/earendil-works/pi-mono/pull/3624) by [@Nutlope](https://github.com/Nutlope)).
 - Added support for Groq models via the `openai-responses` API, introducing a `supportsIncludeEncryptedReasoning` compatibility setting to bypass proprietary xAI-specific encrypted reasoning parameters.
+- Added `qwen/qwen3.8-flash` to the OpenRouter model catalog. Hand-added to `models.generated.ts` rather than via a full `npm run generate-models` regeneration, which currently fails on an unrelated upstream models.dev schema rename (see the comment above the entry in that file).
 
 ### Fixed
 
