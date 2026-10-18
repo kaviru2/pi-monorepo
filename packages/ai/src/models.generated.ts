@@ -5612,6 +5612,34 @@ export const MODELS = {
 			contextWindow: 131072,
 			maxTokens: 16384,
 		} satisfies Model<"groq-chat">,
+		// Hand-added, not from the last `npm run generate-models` run -- same reason as
+		// qwen/qwen3.8-flash above under openrouter (see that entry's comment): a full regeneration
+		// currently breaks on an unrelated upstream models.dev schema rename. models.dev's live
+		// `groq.models["qwen/qwen3.8-27b"]` entry already has complete, correct data (unlike
+		// qwen3.6-27b just above, whose cost/image-input fields are suppressed by a stale manual
+		// override stub in generate-models.ts ~line 509 predating this model's availability there)
+		// -- no generator code change is needed for this one, it would be picked up as-is by the
+		// existing groq-processing loop once a regeneration succeeds. Values taken directly from
+		// models.dev's API response on 2026-10-18. Remove this comment once a real regeneration
+		// reproduces this entry.
+		"qwen/qwen3.8-27b": {
+			id: "qwen/qwen3.8-27b",
+			name: "Qwen3.8 27B",
+			api: "groq-chat",
+			provider: "groq",
+			baseUrl: "https://api.groq.com/openai/v1",
+			reasoning: true,
+			thinkingLevelMap: {"minimal":"default","low":"default","medium":"default","high":"default","off":"none"},
+			input: ["text", "image"],
+			cost: {
+				input: 0.8,
+				output: 4,
+				cacheRead: 0,
+				cacheWrite: 0,
+			},
+			contextWindow: 131042,
+			maxTokens: 16384,
+		} satisfies Model<"groq-chat">,
 	},
 	"huggingface": {
 		"MiniMaxAI/MiniMax-M2": {
